@@ -1,0 +1,581 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\hyphenation{op-tical net-works semi-conduc-tor}
+
+\begin{document}
+
+\csname title\endcsname{FinVeritas: A Deterministic Multi-Agent Framework for Explainable Financial Statement Intelligence}
+
+\author{\IEEEauthorblockN{Anonymous Author(s)}
+\IEEEauthorblockA{Department of Computer Science \\
+Institution Name \\
+City, Country \\
+email@domain.com}}
+
+\maketitle
+
+\begin{abstract}
+Financial analysis pipelines are increasingly required to integrate heterogeneous evidence: semi-structured PDF statements, API-based ticker records, and user-uploaded spreadsheets. Existing solutions typically optimize either analyst control or automation speed, but seldom both. Manual workflows are traceable yet slow; monolithic large language model (LLM) pipelines are fast yet often numerically non-deterministic and difficult to audit. This paper presents \textit{FinVeritas}, an explainable multi-agent architecture designed to close this gap through strict computational determinism and staged orchestration. The framework isolates arithmetic from narrative generation: all metrics are computed in Python from normalized time-series data, while the LLM is constrained to produce text from precomputed metric dictionaries only. Prior to agent execution, a weighted credibility engine scores source authenticity, period coverage, field completeness, consistency, and cross-source agreement. This enables a controlled readiness gate that either executes eligible agents or requests targeted data supplementation. The architecture includes five specialized agents (revenue, balance sheet, liquidity, sentiment, and cross-reference synthesis), JSON-contract communication between stages, and an auditable output trail for each entity. We formalize execution selection as constrained utility maximization under data readiness and latency costs. The resulting framework contributes a practical research baseline for trustworthy AI in FinTech, emphasizing modularity, reproducibility, and governance-ready explainability without fabricating financial calculations.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Multi-Agent Systems, Explainable AI, Financial Analytics, Deterministic Computation, Data Credibility, Streamlit, LangChain
+\end{IEEEkeywords}
+
+\section{Introduction}
+Financial institutions, audit teams, lenders, and compliance analysts increasingly operate in environments where decision latency and model traceability are both mission-critical. Financial statement interpretation no longer relies on a single trusted source. Instead, organizations must integrate Bloomberg-style PDF disclosures, API-sourced market records, and organization-specific spreadsheet uploads. These sources are heterogeneous in structure, quality, and temporal consistency.
+
+In practice, this introduces a persistent systems challenge: analysts need fast, interpretable, and reproducible outputs, while most available AI workflows either over-automate or under-structure the decision process. Traditional analyst-only pipelines are accurate but costly and difficult to scale. End-to-end LLM summarization pipelines are scalable but can conflate extraction, computation, and interpretation, reducing audit confidence in reported values.
+
+\subsection{Problem Definition}
+The technical problem addressed in this paper is the design of a source-aware financial intelligence system that satisfies four constraints simultaneously: (i) deterministic numerical computation, (ii) explicit source credibility scoring, (iii) modular explainable orchestration, and (iv) low-friction deployment in operational analyst workflows.
+
+Formally, given multi-source input $X=\{X_{pdf},X_{ticker},X_{file}\}$, the system must compute a verified metric set $M$ and narrative output $Y$ such that arithmetic is reproducible from $X$ and textual claims in $Y$ are grounded in $M$.
+
+\subsection{Research Objectives}
+This work is organized around the following objectives:
+\begin{enumerate}
+    \item Define a multi-agent architecture with explicit role separation.
+    \item Introduce a weighted credibility model evaluated prior to inference.
+    \item Constrain LLM usage to narrative realization over deterministic metrics.
+    \item Preserve traceability through schema-governed JSON artifacts.
+    \item Provide a reproducible architecture suitable for extension and benchmarking.
+\end{enumerate}
+
+\section{Global Context and Motivation}
+AI-assisted financial interpretation is becoming a foundational layer for background checks, pre-lending diligence, and supervisory analytics. In global practice, however, source quality is uneven. Public filing formats differ across exchanges, fiscal period representations are inconsistent, and supplementary datasets frequently expose sparse fields.
+
+This reality is particularly challenging for explainable systems: interpretability cannot be achieved by post-hoc text generation alone; it requires deterministic data preparation, explicit readiness criteria, and structured failure modes. The motivation for FinVeritas is therefore architectural rather than purely model-centric: improve trust by designing the control plane around verifiability.
+
+\section{Related Work and Literature Gap}
+Traditional RDBMS-centered financial systems perform well under stable schemas but degrade when extraction uncertainty and source disagreement dominate. They are optimized for persistence and retrieval, not uncertainty-aware orchestration.
+
+Recent LLM-based wrappers improve linguistic readability but often treat computation and reasoning as a single black-box step. This increases the risk of non-deterministic numeric reporting and makes error attribution difficult when source quality is poor.
+
+Based on the employed stack (pdfplumber, yfinance, pandas, Streamlit, LangChain), three gaps remain insufficiently addressed in prior practice:
+\begin{itemize}
+    \item \textbf{Credibility-before-inference gap:} most systems estimate output confidence without explicitly modeling input trustworthiness.
+    \item \textbf{Deterministic computation gap:} growth and ratio indicators are often generated textually rather than computed from typed time-series records.
+    \item \textbf{Cross-agent coherence gap:} single-pass summarization rarely enforces structured agreement between revenue, leverage, liquidity, and sentiment signals.
+\end{itemize}
+
+\subsection{Scope Clarification}
+This paper focuses on deterministic financial analysis and explainability. It does \emph{not} claim implementation of post-quantum cryptography, vector-store retrieval-augmented generation, or a 16-agent production deployment in the current codebase. Those are possible extensions and are discussed only as future directions, not present results.
+
+\section{System Overview}
+FinVeritas is designed as a modular workflow from ingestion to explanation:
+\begin{enumerate}
+    \item multi-source ingestion (PDF, ticker, CSV/Excel),
+    \item statement normalization into canonical schema,
+    \item pre-inference credibility scoring,
+    \item agent-level deterministic analytics,
+    \item constrained narrative synthesis,
+    \item structured JSON and UI-level reporting.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering
+\vspace{0.6cm}
+\csname textbf\endcsname{PLACEHOLDER -- System Architecture Figure}\\[4pt]
+Input Sources $\rightarrow$ Ingestion $\rightarrow$ Credibility Engine $\rightarrow$\newline
+Revenue/Balance/Liquidity/Sentiment Agents $\rightarrow$ Cross-Reference Agent $\rightarrow$ Outputs
+\vspace{0.6cm}
+}}
+\caption{High-level architecture placeholder for FinVeritas pipeline.}
+\label{fig:sys_arch_placeholder}
+\end{figure}
+
+\subsection{Nano Banana Prompt for Fig.~\ref{fig:sys_arch_placeholder}}
+\csname textbf\endcsname{Prompt:} ``Create a clean IEEE-style technical architecture diagram with white background and blue-gray palette. Show six left-to-right blocks: (1) Input Sources: Bloomberg PDF, Yahoo Ticker API, CSV/Excel Upload; (2) Ingestion and Normalization; (3) Data Credibility Engine with score meter (0--100); (4) Multi-Agent Analysis with five subagents: Revenue, Balance Sheet, Liquidity, Sentiment, Cross-Reference; (5) Deterministic Metrics + Constrained LLM Narrative; (6) Output: Dashboard + JSON audit trail. Include directional arrows and minimal icons. Keep visual style formal and publication-ready.''
+
+\section{Formal Architecture and Mathematical Model}
+\subsection{Notation}
+Let $\mathcal{E}$ denote entities (companies), $\mathcal{P}$ denote periods, and $\mathcal{F}$ denote required fields:
+\begin{equation}
+\mathcal{F}=\{\text{revenue},\text{total\_assets},\text{total\_liabilities},\text{current\_assets},\text{current\_liabilities},\text{equity}\}.
+\end{equation}
+For each entity $e\in\mathcal{E}$ and period $p\in\mathcal{P}$, the normalized observation is $x_{e,p,f}$ for field $f\in\mathcal{F}$.
+
+\subsection{Credibility Scoring}
+For each entity, a credibility score $C(e)$ is computed before agent execution:
+\begin{equation}
+C(e)=\sum_{k=1}^{m} w_k\,s_k(e),\quad \sum_{k=1}^{m}w_k=1,\quad s_k(e)\in[0,1].
+\end{equation}
+The sub-scores represent source authenticity, account identity consistency, period coverage sufficiency, required field presence, internal data consistency, and cross-source agreement (when available).
+
+\subsection{Readiness-Constrained Agent Selection}
+Let $x_i\in\{0,1\}$ indicate execution of agent $a_i$ and let $r_i(e)\in\{0,1\}$ encode readiness constraints (required inputs available). Agent scheduling is selected by:
+\begin{equation}
+\max_{x_i} U(e)=\sum_{i=1}^{n}x_i\,\alpha_i C(e)-\lambda\sum_{i=1}^{n}x_i t_i-\mu\Phi(e),
+\end{equation}
+subject to
+\begin{equation}
+x_i\le r_i(e),\;\forall i\in\{1,\ldots,n\},
+\end{equation}
+where $t_i$ is per-agent execution cost and $\Phi(e)$ is a penalty for unresolved critical missing fields.
+
+\subsection{Deterministic Metric Layer}
+The system computes all financial indicators deterministically:
+\begin{align}
+\mathrm{YoY}_t &= \frac{R_t-R_{t-1}}{R_{t-1}},\\
+\mathrm{CAGR}_{t_0\to t_n} &= \left(\frac{R_{t_n}}{R_{t_0}}\right)^{\frac{1}{n}}-1,\\
+\mathrm{Debt\text{-}to\text{-}Equity}_t &= \frac{L_t}{E_t},\\
+\mathrm{Leverage}_t &= \frac{A_t}{E_t},\\
+\mathrm{Current\ Ratio}_t &= \frac{CA_t}{CL_t},\\
+\mathrm{Working\ Capital}_t &= CA_t-CL_t.
+\end{align}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering
+\vspace{0.5cm}
+\csname textbf\endcsname{PLACEHOLDER -- Credibility Scoring Diagram}\\[4pt]
+Weighted checks: authenticity, coverage, completeness, consistency, cross-source agreement\\
+Output: confidence band (HIGH/MEDIUM/LOW)
+\vspace{0.5cm}
+}}
+\caption{Placeholder for credibility scoring workflow and weighted aggregation.}
+\label{fig:credibility_placeholder}
+\end{figure}
+
+\subsection{Nano Banana Prompt for Fig.~\ref{fig:credibility_placeholder}}
+\csname textbf\endcsname{Prompt:} ``Generate an IEEE conference-style process diagram showing a weighted credibility engine. Inputs: authenticity, identity match, period coverage, field completeness, data consistency, cross-source agreement. Show each input feeding a weighted sum block and producing a score from 0 to 100 and confidence labels HIGH/MEDIUM/LOW. Add a small decision node: proceed, partial run, or request missing data. Keep design minimalist, formal, and suitable for grayscale printing.''
+
+\section{Proposed Multi-Layer Architecture}
+\subsection{Layer 1: Pre-processing and Ingestion}
+The system supports three modes: PDF ingestion through extraction and parser modules, ticker-based ingestion through financial APIs, and private-company ingestion through CSV/Excel templates. All modes are normalized into a unified entity-time-series schema.
+
+\subsection{Layer 2: Structuring and Canonical Mapping}
+Field names from diverse origins are mapped to canonical keys. Period strings are normalized into annual or quarterly formats. This removes downstream ambiguity and allows agent implementations to operate over a stable schema contract.
+
+\subsection{Layer 3: Intelligence Layer}
+Five specialized agents are currently implemented:
+\begin{enumerate}
+    \item Revenue Agent,
+    \item Balance Sheet Agent,
+    \item Liquidity Agent,
+    \item Sentiment Agent (optional key-dependent),
+    \item Cross-Reference Agent.
+\end{enumerate}
+
+\subsection{Layer 4: Validation and Explainability Layer}
+A readiness gate and credibility status guide execution behavior:
+\begin{itemize}
+    \item execute all eligible agents,
+    \item execute subset with transparent omissions,
+    \item invoke supplementation workflow.
+\end{itemize}
+Each run generates auditable JSON output for traceability.
+
+\section{Communication Protocol and Data Contracts}
+Instead of tightly coupled service-to-database workflows, FinVeritas uses stateless JSON exchange contracts between modules. This pattern aligns with MCP-style interoperability principles: explicit inputs, explicit outputs, low coupling, and replaceable components.
+
+\subsection{Contract Requirements}
+Each stage enforces:
+\begin{enumerate}
+    \item schema-valid payload,
+    \item period-aligned time series,
+    \item typed numeric fields,
+    \item provenance metadata,
+    \item deterministic error responses.
+\end{enumerate}
+
+\subsection{Complexity of Validation}
+Given $N$ periods and $F$ required fields, completeness and consistency validation is approximately:
+\begin{equation}
+T_{val}=O(NF),
+\end{equation}
+while cross-source agreement for $S$ sources is:
+\begin{equation}
+T_{cross}=O(NFS).
+\end{equation}
+
+\section{Technical Methodology}
+\subsection{Revenue Agent}
+The revenue agent computes growth trend features, volatility proxies, and directional consistency checks. Narrative synthesis is generated only after metric computation is finalized.
+
+\subsection{Balance Sheet Agent}
+The balance sheet agent evaluates leverage and equity dynamics under deterministic formulas and rejects invalid negative-value conditions for core balance fields.
+
+\subsection{Liquidity Agent}
+The liquidity agent computes current ratio and working capital trajectories. It includes a compliance-oriented retry mechanism for constrained terminology in generated narrative outputs.
+
+\subsection{Sentiment Agent}
+The sentiment module is optional and key-dependent. It classifies polarity from financial headlines using a deterministic lexicon-style scoring strategy and exposes intermediate counts for transparency.
+
+\subsection{Cross-Reference Agent}
+This agent receives metric dictionaries from all prior agents and composes an integrated synthesis narrative, highlighting agreement or contradiction across financial dimensions.
+
+\begin{algorithm}
+\caption{Readiness-Gated Multi-Agent Execution}
+\begin{algorithmic}[1]
+\STATE Receive normalized entity payload $e$
+\STATE Compute credibility score $C(e)$
+\STATE Determine readiness map $r_i(e)$ for each agent $a_i$
+\FOR{each agent $a_i$ in execution order}
+    \IF{$r_i(e)=1$}
+        \STATE Run deterministic metric computation
+        \STATE Generate constrained narrative from metric dictionary
+        \STATE Persist agent output JSON
+    \ELSE
+        \STATE Record skip reason and missing prerequisites
+    \ENDIF
+\ENDFOR
+\STATE Run cross-reference synthesis using available agent outputs
+\STATE Return dashboard payload and audit artifacts
+\end{algorithmic}
+\label{alg:orchestration}
+\end{algorithm}
+
+\section{Determinism and Explainability Guarantees}
+FinVeritas follows three governance-oriented guarantees:
+\begin{enumerate}
+    \item \textbf{Arithmetic determinism:} all financial math is implemented in code paths independent of language generation.
+    \item \textbf{Narrative grounding:} LLM prompts contain computed metrics, not raw unverified statements.
+    \item \textbf{Artifact traceability:} every major stage emits machine-readable JSON artifacts.
+\end{enumerate}
+These guarantees support analyst verification and facilitate future benchmark comparisons.
+
+\section{Implementation Mapping to Codebase}
+The implementation follows a clear module separation:
+\begin{itemize}
+    \item ingestion and extraction modules,
+    \item parser and canonical mapper,
+    \item builder and verifier,
+    \item per-agent implementations,
+    \item Streamlit UI and workflow visualization.
+\end{itemize}
+
+\begin{table}[t]
+\caption{Code-Level Mapping of Functional Layers}
+\label{tab:module_mapping}
+\centering
+\begin{tabular}{p{0.30\columnwidth} p{0.62\columnwidth}}
+\hline
+\csname textbf\endcsname{Layer} & \csname textbf\endcsname{Representative Modules} \\
+\midrule
+Ingestion & PDF parser, ticker ingestion, private company ingestion \\
+Structuring & extractor, parser, mapper, builder \\
+Credibility & data verifier, readiness checks, supplemental fetchers \\
+Intelligence & revenue, balance sheet, liquidity, sentiment, cross-reference agents \\
+Presentation & dashboard components, workflow graph, JSON views \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Experimental Design (Protocol, Not Claimed Results)}
+To remain non-fabricated and reproducible, this section defines an evaluation protocol rather than reporting unobserved performance values.
+
+\subsection{Dataset Groups}
+Planned experiments should include:
+\begin{itemize}
+    \item listed entities with complete ticker coverage,
+    \item entities with partial or missing fields,
+    \item PDF-only entities with variable extraction quality,
+    \item private spreadsheet uploads with schema perturbations.
+\end{itemize}
+
+\subsection{Evaluation Dimensions}
+\begin{enumerate}
+    \item \textbf{Correctness:} metric consistency against hand-calculated references.
+    \item \textbf{Robustness:} behavior under missing fields and noisy extraction.
+    \item \textbf{Coverage:} percentage of agents executable under each input condition.
+    \item \textbf{Explainability:} completeness of trace artifacts and readability of grounded narratives.
+    \item \textbf{Operational latency:} end-to-end runtime per entity under different source combinations.
+\end{enumerate}
+
+\subsection{Suggested Metrics}
+\begin{align}
+\mathrm{CoverageRate} &= \frac{\#\text{executed agents}}{\#\text{available agents}},\\
+\mathrm{FieldCompleteness} &= \frac{\#\text{present required fields}}{\#\text{required fields}},\\
+\mathrm{DeterminismError} &= \frac{1}{Q}\sum_{q=1}^{Q}\mathbb{I}(m_q^{run1}\ne m_q^{run2}).
+\end{align}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering
+\vspace{0.5cm}
+\csname textbf\endcsname{PLACEHOLDER -- Evaluation Dashboard Figure}\\[4pt]
+Panels: coverage rate, credibility distribution, deterministic consistency checks
+\vspace{0.5cm}
+}}
+\caption{Placeholder for quantitative dashboard layout used in protocol-driven evaluation.}
+\label{fig:eval_placeholder}
+\end{figure}
+
+\subsection{Nano Banana Prompt for Fig.~\ref{fig:eval_placeholder}}
+\csname textbf\endcsname{Prompt:} ``Create a publication-grade dashboard mockup for an explainable financial AI system. Include three clean panels: (1) Agent Coverage by data source, (2) Credibility score histogram with HIGH/MEDIUM/LOW zones, (3) Determinism consistency check table (run-to-run equality). Use neutral blue-gray colors, no branding, IEEE-friendly style, and high legibility for print.''
+
+\section{Error Handling, Failure Modes, and Mitigation}
+\subsection{Failure Modes}
+Observed classes of errors in this class of systems include extraction ambiguity from PDF table layouts, temporal misalignment across sources, denominator-zero risks in ratio calculations, and narrative drift when prompts are not tightly constrained.
+
+\subsection{Mitigation Strategy}
+FinVeritas applies guardrails at multiple points:
+\begin{enumerate}
+    \item typed schema checks before metric computation,
+    \item readiness gating before each agent,
+    \item deterministic formula validation,
+    \item constrained generation and compliance retry,
+    \item JSON-level persistence of skips and warnings.
+\end{enumerate}
+
+\section{Scalability and Extension Path}
+The current architecture supports five specialized agents and is modular for extension. Future scaling to larger agent sets can be achieved by preserving the same contract pattern:
+\begin{equation}
+T_{total}=O(NP)+\sum_{i=1}^{n}O(A_i)+O(S),
+\end{equation}
+where $n$ can increase with additional domain agents (e.g., cash-flow quality, contingent liability risk, governance signal extraction) without redesigning the ingestion or validation layers.
+
+\section{Discussion}
+The primary contribution is architectural: trustworthiness is treated as a systems property instead of a model property. By scoring credibility before inference and separating deterministic arithmetic from language generation, the framework addresses a central reproducibility challenge in applied AI for finance.
+
+A second contribution is operational: analysts can proceed with partial execution while receiving explicit skip reasons and missing-field diagnostics. This avoids both silent failure and all-or-nothing execution behavior.
+
+A third contribution is methodological: the paper defines a reproducible protocol for future comparative studies against monolithic LLM pipelines and manual-only baselines.
+
+\section{Data Schema Formalization}
+\subsection{Entity Schema}
+Each processed entity is represented by a tuple:
+\begin{equation}
+\mathcal{Z}_e=\langle id,source,currency,\mathcal{T}_e,\mathcal{G}_e\rangle,
+\end{equation}
+where $\mathcal{T}_e$ is the normalized time series and $\mathcal{G}_e$ stores governance metadata (source files, parse warnings, credibility status).
+
+\subsection{Time-Series Constraints}
+For a given field $f$, period sequence $\{p_1,\ldots,p_n\}$ is constrained by chronological monotonicity:
+\begin{equation}
+p_i < p_j \Rightarrow i<j.
+\end{equation}
+Missing values are represented as explicit null markers, not implicit omission, enabling deterministic readiness checks.
+
+\subsection{Schema Completeness Index}
+Given required fields $\mathcal{F}$ and periods $\mathcal{P}$, completeness is measured as:
+\begin{equation}
+\kappa(e)=\frac{\sum_{f\in\mathcal{F}}\sum_{p\in\mathcal{P}}\mathbb{I}(x_{e,p,f}\neq\varnothing)}{|\mathcal{F}|\cdot|\mathcal{P}|}.
+\end{equation}
+The index $\kappa(e)$ is used as an interpretable sub-score in data readiness diagnostics.
+
+\section{Agent Interaction Semantics}
+\subsection{Typed Interfaces}
+Each agent consumes a typed input object and emits a typed output object. Let $I_i$ and $O_i$ denote the input and output schema of agent $a_i$. Compatibility is defined as:
+\begin{equation}
+O_i \models I_j,
+\end{equation}
+meaning all required keys in $I_j$ are present and type-valid in $O_i$.
+
+\subsection{Cross-Agent Consistency Checks}
+Cross-reference synthesis verifies consistency constraints such as trend coherence and risk alignment. A generic consistency function can be written as:
+\begin{equation}
+\Gamma(e)=\frac{1}{K}\sum_{k=1}^{K}\mathbb{I}(\psi_k(e)=\text{true}),
+\end{equation}
+where each rule $\psi_k$ is a deterministic boolean predicate over agent outputs.
+
+\subsection{Conflict Annotation}
+If $\Gamma(e)$ falls below a configured threshold, the synthesis stage emits conflict annotations rather than forcing a single conclusive narrative. This improves epistemic transparency.
+
+\section{Prompt Governance and LLM Control Plane}
+\subsection{Prompt Partitioning}
+Prompts are divided into:
+\begin{enumerate}
+    \item system-level behavioral constraints,
+    \item metric dictionary payload,
+    \item prohibited term and scope controls,
+    \item formatting directives for analyst readability.
+\end{enumerate}
+
+\subsection{Constrained Generation Objective}
+Let $\hat{y}$ denote generated narrative and $m$ denote deterministic metrics. The objective is to maximize narrative utility under grounding constraints:
+\begin{equation}
+\max_{\hat{y}} \;\mathcal{U}(\hat{y}|m)\quad\text{s.t.}\quad\hat{y}\in\mathcal{L}(m),
+\end{equation}
+where $\mathcal{L}(m)$ is the language set that does not introduce unsupported numeric claims.
+
+\subsection{Compliance Retry Logic}
+When prohibited or out-of-scope terms are detected, a retry pass is triggered with stricter constraints. The system records both initial and final attempts for auditability.
+
+\section{Operational Workflow in the Dashboard}
+\subsection{User Interaction Model}
+The user journey is formalized as a finite-state process:
+\begin{equation}
+S_0\rightarrow S_1\rightarrow S_2\rightarrow S_3\rightarrow S_4,
+\end{equation}
+where $S_0$ is source selection, $S_1$ ingestion, $S_2$ credibility preview, $S_3$ execution, and $S_4$ report inspection.
+
+\subsection{Readiness Branches}
+At $S_2$, the system supports two deterministic branches:
+\begin{itemize}
+    \item proceed with available data,
+    \item supplement missing data before full execution.
+\end{itemize}
+
+\subsection{Audit-Oriented Views}
+The dashboard exposes metric tables, per-agent narratives, and raw JSON traces. This tri-view design supports both executive consumption and technical validation.
+
+\begin{table}[t]
+\caption{Representative Output Components by Agent}
+\label{tab:agent_outputs}
+\centering
+\begin{tabular}{p{0.26\columnwidth} p{0.67\columnwidth}}
+\hline
+\csname textbf\endcsname{Agent} & \csname textbf\endcsname{Output Components} \\
+\midrule
+Revenue & YoY growth series, CAGR, volatility indicator, trend direction, grounded narrative \\
+Balance Sheet & Debt-to-equity, leverage ratio, asset/equity trend indicators, risk classification, narrative \\
+Liquidity & Current ratio series, working capital trajectory, liquidity risk flag, narrative \\
+Sentiment & Headline sample summary, polarity counts, sentiment label, narrative \\
+Cross-Reference & Integrated synopsis, agreement/conflict notes, consolidated risk interpretation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Reproducibility and Experiment Packaging}
+\subsection{Execution Reproducibility}
+A reproducible run must preserve: input files, API snapshot timestamps, configuration values, and emitted JSON artifacts. For two runs $r_1,r_2$ with same deterministic inputs, metric equivalence should satisfy:
+\begin{equation}
+\Delta_M(r_1,r_2)=0.
+\end{equation}
+
+\subsection{Protocol Packaging}
+For benchmark studies, each experiment package should include:
+\begin{enumerate}
+    \item input manifest,
+    \item source provenance metadata,
+    \item configuration profile,
+    \item metric outputs,
+    \item narrative outputs,
+    \item skip/warning logs.
+\end{enumerate}
+
+\subsection{Versioning Strategy}
+Data schemas and prompt templates should be versioned independently to isolate changes in computation from changes in language realization.
+
+\section{Computational Cost Analysis}
+\subsection{Ingestion and Normalization}
+Let $B$ be the number of source records per entity and $P$ the number of periods. Extraction and normalization complexity is approximately:
+\begin{equation}
+T_{ingest}=O(B)+O(PF).
+\end{equation}
+
+\subsection{Agent Layer Cost}
+With $n$ agents and per-agent cost $A_i$, total analytical runtime is:
+\begin{equation}
+T_{agents}=\sum_{i=1}^{n}O(A_i).
+\end{equation}
+
+\subsection{Cross-Reference Synthesis Cost}
+If synthesis consumes $q$ structured outputs, composition cost is approximately linear in output size:
+\begin{equation}
+T_{sync}=O\left(\sum_{j=1}^{q}|O_j|\right).
+\end{equation}
+
+\subsection{Total Runtime Envelope}
+For a batch of $E$ entities:
+\begin{equation}
+T_{batch}=\sum_{e=1}^{E}\left(T_{ingest}(e)+T_{val}(e)+T_{agents}(e)+T_{sync}(e)\right).
+\end{equation}
+
+\section{Risk and Governance Considerations}
+\subsection{Model Risk}
+The principal model risk is narrative overreach when language output exceeds metric evidence. This is controlled through metric-only prompts and compliance retries.
+
+\subsection{Data Risk}
+Data risk includes stale API records, parser errors, and period mismatch. The credibility engine mitigates but does not eliminate these risks; hence confidence annotation remains mandatory.
+
+\subsection{Process Risk}
+Operational risk can arise from incorrect interpretation of generated narratives. Structured JSON artifacts and metric-first displays reduce this risk by preserving primary evidence.
+
+\section{Practical Deployment Considerations}
+\subsection{Configuration}
+The runtime supports configurable LLM endpoint, model name, API keys, and optional sentiment keys. This enables both local and remote deployment modes.
+
+\subsection{Graceful Degradation}
+If a non-critical component (e.g., sentiment API) is unavailable, execution degrades gracefully rather than failing globally.
+
+\subsection{Integration Readiness}
+JSON artifacts can be consumed by external reporting, governance, or archival systems without requiring changes to computational modules.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering
+\vspace{0.55cm}
+\csname textbf\endcsname{PLACEHOLDER -- Deployment Topology}\\[4pt]
+Local UI, ingestion services, agent runtime, optional external APIs, JSON artifact store
+\vspace{0.55cm}
+}}
+\caption{Placeholder for practical deployment topology of FinVeritas.}
+\label{fig:deployment_placeholder}
+\end{figure}
+
+\subsection{Nano Banana Prompt for Fig.~\ref{fig:deployment_placeholder}}
+\csname textbf\endcsname{Prompt:} ``Create an IEEE-style deployment topology diagram for a financial analysis platform. Include components: Streamlit UI client, ingestion pipeline, credibility engine, five-agent runtime, optional external APIs (ticker and news), and output JSON store. Show network boundaries and data flow arrows. Keep color palette muted and print-friendly.''
+
+\section{Image Placeholders and Nano Banana Prompts}
+This section provides explicit prompts and placeholders for figures expected in the full manuscript.
+
+\subsection{Placeholder: Agent Workflow Graph}
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering
+\vspace{0.55cm}
+\csname textbf\endcsname{PLACEHOLDER -- Agent Workflow Graph}\\[4pt]
+Nodes: Revenue, Balance Sheet, Liquidity, Sentiment, Cross-Reference\\
+Edges indicate dependency and synthesis flow
+\vspace{0.55cm}
+}}
+\caption{Placeholder for directed graph of agent interactions and dependencies.}
+\label{fig:agent_graph_placeholder}
+\end{figure}
+
+\csname textbf\endcsname{Prompt:} ``Generate a directed workflow graph for a financial multi-agent system. Use five rounded nodes: Revenue Agent, Balance Sheet Agent, Liquidity Agent, Sentiment Agent, and Cross-Reference Agent. Show arrows from the first four into Cross-Reference. Add a side node called Credibility Gate feeding all agents. Style should be minimal, black and blue, IEEE conference compatible.''
+
+\subsection{Placeholder: Data Readiness Decision Tree}
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering
+\vspace{0.55cm}
+\csname textbf\endcsname{PLACEHOLDER -- Readiness Decision Tree}\\[4pt]
+Decision: complete data? yes $\rightarrow$ full run; no $\rightarrow$ partial run or supplement
+\vspace{0.55cm}
+}}
+\caption{Placeholder for readiness-check decision logic.}
+\label{fig:readiness_placeholder}
+\end{figure}
+
+\csname textbf\endcsname{Prompt:} ``Create a formal binary decision tree diagram for data readiness in financial AI. Root node: Required fields complete? Branch Yes leads to Full Multi-Agent Execution. Branch No leads to two options: Proceed with Partial Agents and Fix Missing Data (Supplement Form/API Fill). Keep typography clean and suitable for IEEE print.''
+
+\section{Threats to Validity}
+\subsection{Internal Validity}
+Extraction quality can vary across statement layouts, affecting downstream metrics. Mitigation relies on canonical mapping and validation checks but cannot fully remove parser limitations.
+
+\subsection{External Validity}
+Different markets, accounting standards, and filing formats may require adaptation of mapping dictionaries and completeness thresholds.
+
+\subsection{Construct Validity}
+Credibility score design depends on weighting choices $w_k$. Sensitivity analysis is required to understand robustness across sectors and data regimes.
+
+\section{Conclusion}
+This paper presented FinVeritas as a deterministic and explainable multi-agent framework for financial statement intelligence. The architecture unifies heterogeneous ingestion, schema normalization, credibility-aware gating, agent-specialized analytics, and constrained narrative generation. The central design choice is explicit separation of arithmetic computation from language realization, supported by auditable JSON artifacts and readiness-driven execution control.
+
+The manuscript intentionally avoids fabricated evaluation claims and instead provides a reproducible protocol for empirical benchmarking. With this foundation, future work can expand agent cardinality, formalize uncertainty propagation, and compare protocol-level behavior against alternative AI pipeline designs in operational FinTech settings.
+
+\begin{thebibliography}{00}
+\bibitem{b1} Streamlit Documentation, ``Streamlit API Reference,'' 2026.
+\bibitem{b2} LangChain Documentation, ``LangChain Python Documentation,'' 2026.
+\bibitem{b3} Yahoo Finance, ``Ticker Data Access and Historical Financials,'' 2026.
+\bibitem{b4} Financial Modeling Prep, ``API Documentation,'' 2026.
+\bibitem{b5} Alpha Vantage, ``Financial Data API Documentation,'' 2026.
+\bibitem{b6} pdfplumber Documentation, ``Extracting Structured Data from PDF,'' 2026.
+\bibitem{b7} Numpy and Pandas Documentation, ``Numerical and Tabular Computation in Python,'' 2026.
+\end{thebibliography}
+
+\end{document}
