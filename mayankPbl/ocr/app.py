@@ -9,8 +9,10 @@ Pages
 """
 from __future__ import annotations
 
+import os
 import traceback
 from typing import Any
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -48,6 +50,76 @@ _DEFAULT_FMP_KEY      = ""
 _DEFAULT_AV_KEY       = ""
 
 
+def _env_default_api_key(provider: str) -> str:
+    """Pick a provider-aware default API key from environment variables."""
+    p = (provider or "").strip().lower()
+    llm = os.environ.get("LLM_API_KEY", "")
+    gem = os.environ.get("GEMINI_API_KEY", "")
+    grq = os.environ.get("GROQ_API_KEY", "")
+
+    if p == "groq":
+        return grq or llm or _DEFAULT_API_KEY
+    if p == "gemini":
+        return gem or llm or _DEFAULT_API_KEY
+    return llm or gem or grq or _DEFAULT_API_KEY
+
+
+def _load_dotenv_fallback() -> None:
+    """Minimal .env loader (no external dependency).
+
+    Loads key=value lines into process environment only when the key is not
+    already present in os.environ.
+    """
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parents[3] / ".env",  # workspace root
+        Path(__file__).resolve().parents[2] / ".env",  # repo root fallback
+    ]
+    seen: set[Path] = set()
+    for env_path in candidates:
+        env_path = env_path.resolve()
+        if env_path in seen or not env_path.exists() or not env_path.is_file():
+            continue
+        seen.add(env_path)
+        for raw in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
+_load_dotenv_fallback()
+
+_DEFAULT_PROVIDER     = os.environ.get("LLM_PROVIDER", "Local / OpenAI-compatible")
+_DEFAULT_BASE_URL     = os.environ.get("LLM_BASE_URL", _DEFAULT_BASE_URL)
+_DEFAULT_MODEL        = os.environ.get("LLM_MODEL", _DEFAULT_MODEL)
+_DEFAULT_API_KEY      = _env_default_api_key(_DEFAULT_PROVIDER)
+_DEFAULT_NEWS_API_KEY = os.environ.get("NEWS_API_KEY", _DEFAULT_NEWS_API_KEY)
+_DEFAULT_FMP_KEY      = os.environ.get("FMP_API_KEY", _DEFAULT_FMP_KEY)
+_DEFAULT_AV_KEY       = os.environ.get("ALPHA_VANTAGE_API_KEY", _DEFAULT_AV_KEY)
+
+
+def _llm_config_error(base_url: str, api_key: str) -> str | None:
+    """Return a user-facing config error string if LLM credentials look invalid."""
+    b = (base_url or "").strip().lower()
+    k = (api_key or "").strip()
+
+    if not k or k.lower() in {"local", "api key", "google ai studio key", "groq api key"}:
+        return "Missing/placeholder LLM API key in sidebar."
+
+    if "generativelanguage.googleapis.com" in b and not k.startswith("AIza"):
+        return "Gemini endpoint selected, but API key does not look like a Gemini key (expected prefix: AIza)."
+
+    if "api.groq.com" in b and not k.startswith("gsk_"):
+        return "Groq endpoint selected, but API key does not look like a Groq key (expected prefix: gsk_)."
+
+    return None
+
+
 def _provider_defaults(provider: str) -> tuple[str, str, str]:
     """Return (base_url, model, api_key_placeholder) for a selected LLM provider."""
     provider = (provider or "").strip().lower()
@@ -56,6 +128,12 @@ def _provider_defaults(provider: str) -> tuple[str, str, str]:
             "https://generativelanguage.googleapis.com/v1beta/openai/",
             "gemini-2.0-flash",
             "Google AI Studio key",
+        )
+    if provider == "groq":
+        return (
+            "https://api.groq.com/openai/v1",
+            "llama-3.3-70b-versatile",
+            "Groq API key",
         )
     if provider == "openai-compatible":
         return (
@@ -703,6 +781,10 @@ def page_upload(base_url: str, model: str, api_key: str, news_api_key: str = "",
         )
         render_section_header("Run Agent Pipeline")
         if st.button("▶  RUN FULL ANALYSIS", use_container_width=False, key="run_pipeline_btn"):
+            _cfg_err = _llm_config_error(base_url=base_url, api_key=api_key)
+            if _cfg_err:
+                st.error(f"LLM configuration error: {_cfg_err}")
+                st.stop()
             _run_agent_pipeline(payload, agent_paths, base_url, model, api_key, news_api_key)
 
     else:
@@ -753,6 +835,10 @@ def page_upload(base_url: str, model: str, api_key: str, news_api_key: str = "",
 
         # Run pipeline (either via proceed-anyway or after fixing data)
         if _proceed_anyway:
+            _cfg_err = _llm_config_error(base_url=base_url, api_key=api_key)
+            if _cfg_err:
+                st.error(f"LLM configuration error: {_cfg_err}")
+                st.stop()
             _run_agent_pipeline(payload, agent_paths, base_url, model, api_key, news_api_key)
 
     outputs = st.session_state.get("agent_outputs")
@@ -974,6 +1060,22 @@ def main() -> None:
 
     render_top_bar(entity=entity)
 
+    # Seed sidebar session defaults once per session.
+    if "llm_provider" not in st.session_state:
+        st.session_state["llm_provider"] = _DEFAULT_PROVIDER
+    if "llm_base_url" not in st.session_state:
+        st.session_state["llm_base_url"] = _DEFAULT_BASE_URL
+    if "llm_model" not in st.session_state:
+        st.session_state["llm_model"] = _DEFAULT_MODEL
+    if "llm_api_key" not in st.session_state:
+        st.session_state["llm_api_key"] = _DEFAULT_API_KEY
+    if "news_api_key_input" not in st.session_state:
+        st.session_state["news_api_key_input"] = _DEFAULT_NEWS_API_KEY
+    if "fmp_api_key_input" not in st.session_state:
+        st.session_state["fmp_api_key_input"] = _DEFAULT_FMP_KEY
+    if "av_api_key_input" not in st.session_state:
+        st.session_state["av_api_key_input"] = _DEFAULT_AV_KEY
+
     with st.sidebar:
         st.markdown("""
             <div class="bb-sidebar-logo">
@@ -1012,24 +1114,60 @@ def main() -> None:
 
         render_hr()
         st.markdown('<div class="bb-nav-label" style="margin-top:8px;">LLM Settings</div>', unsafe_allow_html=True)
+        _providers = ["Local / OpenAI-compatible", "Gemini", "Groq", "Other OpenAI-compatible"]
+        _provider_from_env = (_DEFAULT_PROVIDER or "").strip().lower()
+        _provider_alias = {
+            "local": "Local / OpenAI-compatible",
+            "local / openai-compatible": "Local / OpenAI-compatible",
+            "openai-compatible": "Other OpenAI-compatible",
+            "openai compatible": "Other OpenAI-compatible",
+            "gemini": "Gemini",
+            "groq": "Groq",
+        }
+        _provider_default_label = _provider_alias.get(_provider_from_env, "Local / OpenAI-compatible")
         provider = st.selectbox(
             "LLM Provider",
-            ["Local / OpenAI-compatible", "Gemini", "Other OpenAI-compatible"],
-            index=0,
+            _providers,
+            index=_providers.index(_provider_default_label),
             help="Pick Gemini for Google AI Studio, or use an OpenAI-compatible endpoint for local/cloud models.",
+            key="llm_provider_select",
         )
-        _provider_key = "gemini" if provider == "Gemini" else ("openai-compatible" if provider == "Other OpenAI-compatible" else "local")
+        if provider == "Gemini":
+            _provider_key = "gemini"
+        elif provider == "Groq":
+            _provider_key = "groq"
+        elif provider == "Other OpenAI-compatible":
+            _provider_key = "openai-compatible"
+        else:
+            _provider_key = "local"
         provider_base_url, provider_model, provider_api_label = _provider_defaults(_provider_key)
-        base_url = st.text_input("Base URL", value=provider_base_url)
-        model    = st.text_input("Model",    value=provider_model)
-        api_key  = st.text_input(provider_api_label, value=_DEFAULT_API_KEY, type="password")
+        provider_env_api_key = _env_default_api_key(_provider_key)
+        # If provider changed, update defaults only when fields are empty/placeholder.
+        if st.session_state.get("llm_base_url") in {"", _DEFAULT_BASE_URL, "http://127.0.0.1:1234/v1"}:
+            st.session_state["llm_base_url"] = provider_base_url
+        if st.session_state.get("llm_model") in {"", _DEFAULT_MODEL, "qwen2.5-coder-1.5b-instruct-mlx"}:
+            st.session_state["llm_model"] = provider_model
+        if st.session_state.get("llm_api_key") in {"", _DEFAULT_API_KEY, "local", "API key", "Google AI Studio key", "Groq API key"}:
+            st.session_state["llm_api_key"] = provider_env_api_key
+
+        if st.button("Reload LLM defaults from .env", key="reload_llm_env_defaults"):
+            st.session_state["llm_base_url"] = provider_base_url
+            st.session_state["llm_model"] = provider_model
+            st.session_state["llm_api_key"] = provider_env_api_key
+            st.rerun()
+
+        base_url = st.text_input("Base URL", value=st.session_state.get("llm_base_url", provider_base_url), key="llm_base_url")
+        model    = st.text_input("Model", value=st.session_state.get("llm_model", provider_model), key="llm_model")
+        api_key  = st.text_input(provider_api_label, value=st.session_state.get("llm_api_key", provider_env_api_key), type="password", key="llm_api_key")
         if provider == "Gemini":
             st.caption("Gemini is used through Google’s OpenAI-compatible endpoint: https://generativelanguage.googleapis.com/v1beta/openai/")
+        elif provider == "Groq":
+            st.caption("Groq uses the OpenAI-compatible endpoint: https://api.groq.com/openai/v1")
 
         render_hr()
         st.markdown('<div class="bb-nav-label" style="margin-top:8px;">News</div>', unsafe_allow_html=True)
         news_api_key = st.text_input(
-            "NewsAPI Key", value=_DEFAULT_NEWS_API_KEY, type="password",
+            "NewsAPI Key", value=st.session_state.get("news_api_key_input", _DEFAULT_NEWS_API_KEY), type="password", key="news_api_key_input",
             help="Free key at newsapi.org — enables the Sentiment Agent",
         )
 
@@ -1041,7 +1179,7 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         fmp_api_key = st.text_input(
-            "FMP Key", value=_DEFAULT_FMP_KEY, type="password",
+            "FMP Key", value=st.session_state.get("fmp_api_key_input", _DEFAULT_FMP_KEY), type="password", key="fmp_api_key_input",
             help="Free 250 req/day — financialmodelingprep.com",
         )
         st.markdown(
@@ -1050,7 +1188,7 @@ def main() -> None:
             unsafe_allow_html=True,
         )
         av_api_key = st.text_input(
-            "Alpha Vantage Key", value=_DEFAULT_AV_KEY, type="password",
+            "Alpha Vantage Key", value=st.session_state.get("av_api_key_input", _DEFAULT_AV_KEY), type="password", key="av_api_key_input",
             help="Free 25 req/day — alphavantage.co (backup source)",
         )
         st.markdown(

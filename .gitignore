@@ -1,0 +1,4 @@
+.env
+output/
+m.html
+mayankPbl/ocr/src/groq_smoke_test.py
