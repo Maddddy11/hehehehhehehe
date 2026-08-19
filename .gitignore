@@ -40,3 +40,4 @@ m.html
 
 # Legacy paths (pre-rename)
 mayankPbl/ocr/src/groq_smoke_test.py
+.claude/
